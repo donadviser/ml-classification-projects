@@ -1,4 +1,4 @@
-# Titanic Classification
+# Titanic - Machine Learning from Disaster
 
 ## Objectives
 # Classify if a person would survive or not.
@@ -24,6 +24,46 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
 
+# file and data management
+import urllib.request
+import zipfile
+
+
+def extract_zip(src, dst, member_name):
+    """Function to extract a member file from a zip file and read it into a pandas 
+    DataFrame.
+
+    Parameters:
+        src (str): URL of the zip file to be downloaded and extracted.
+        dst (str): Local file path where the zip file will be written.
+        member_name (str): Name of the member file inside the zip file 
+            to be read into a DataFrame.
+
+    Returns:
+        pandas.DataFrame: DataFrame containing the contents of the 
+            member file.
+
+    usage:
+        raw = extract_zip(url, fname, member_name)
+
+    example:
+        url = 'https://github.com/mattharrison/datasets/raw/master/data/kaggle-survey-2018.zip'
+        fname = 'kaggle-survey-2018.zip'
+        member_name = 'multipleChoiceResponses.csv'
+    """    
+    url = src
+    fname = dst
+    fin = urllib.request.urlopen(url)
+    data = fin.read()
+    with open(dst, mode='wb') as fout:
+        fout.write(data)
+    with zipfile.ZipFile(dst) as z:
+        kag = pd.read_csv(z.open(member_name))
+        kag_questions = kag.iloc[0]
+        raw = kag.iloc[1:]
+        return raw
+
+ 
 
 class ClassifierTester:
     def __init__(self, data, target, test_size=0.3):
@@ -180,3 +220,140 @@ clean_titanic = (
 
 # Visualize the cleaned data
 sns.pairplot(clean_titanic, hue='survived')
+
+
+# Load the Titanic dataset
+data_path = "https://github.com/donadviser/datasets/raw/master/data/titanic3.xls"
+titanic = pd.read_excel(data_path)
+titanic.head()
+
+
+# Dataset overview
+
+(titanic
+    #.head(10)  # View the first 10 rows
+    #.shape  # Get the dimensions of the dataframe
+    # .info()  # Get data types, memory usage, and non-null values
+    # .describe(include='all').T  # Summary statistics for all columns, transposed
+    # .columns  # List column names
+    # .value_counts(dropna=False)  # Count unique values in each column, including NaN
+    # .nunique()  # Count unique values in each column (excluding NaN)
+    # .isnull().sum()  # Check for missing values in each column
+    # .duplicated().sum()  # Check for duplicate rows
+    # .hist()  # Plot histograms of numerical columns
+    # .corr()  # Calculate the correlation matrix between numerical columns
+    # .sort_values(by='column_name')  # Sort by a specific column
+    # .groupby('column_name').agg(function)  # Group data and apply aggregate function
+    # .sample(5, random_state=42)  # Get a random sample of 5 rows
+    # .groupby('speaker_id').agg(mean_pitch=pd.NamedAgg(column='pitch', aggfunc='mean'))  # Custom aggregation
+    # .pivot_table(values='duration', index='speaker_id', columns='emotion', aggfunc='mean')  # Pivot table
+    # .resample('1S').mean().rolling(window=10).mean()  # Time series analysis (if applicable)
+    # .apply(pd.to_numeric, errors='coerce')  # Attempt numeric conversion for potential mixed-type columns
+    # .select_dtypes(include=['category']).head()  # Explore categorical columns
+    # .plot(kind='box', subplots=True, layout=(3, 3), figsize=(15, 10))  # Boxplots for visual analysis
+    # .corrwith(titanic['target_column'])  # Explore correlations with a target column
+)
+
+
+def explore_data(dataframe, method=None, **kwargs):
+    """
+    Explore a DataFrame using various methods.
+
+    Parameters:
+        dataframe (pd.DataFrame): The DataFrame to explore.
+        method (str): The exploration method to apply.
+        **kwargs: Additional keyword arguments for the method.
+
+    Returns:
+        pd.DataFrame or Series or None: The result of the exploration method.
+    """
+    if method == 'head':
+        return dataframe.head(**kwargs)
+    elif method == 'shape':
+        return dataframe.shape
+    elif method == 'info':
+        return dataframe.info()
+    elif method == 'describe':
+        return dataframe.describe(include='all').T
+    elif method == 'columns':
+        return dataframe.columns
+    elif method == 'value_counts':
+        return dataframe.value_counts(dropna=False)
+    elif method == 'nunique':
+        return dataframe.nunique()
+    elif method == 'isnull_sum':
+        return dataframe.isnull().sum()
+    elif method == 'duplicated_sum':
+        return dataframe.duplicated().sum()
+    elif method == 'hist':
+        return dataframe.hist(**kwargs)
+    elif method == 'corr':
+        return dataframe.corr()
+    elif method == 'sort_values':
+        return dataframe.sort_values(by=kwargs.get('by'))
+    elif method == 'groupby_agg':
+        return dataframe.groupby(kwargs.get('by')).agg(kwargs.get('agg_function'))
+    elif method == 'sample':
+        return dataframe.sample(**kwargs)
+    elif method == 'pivot_table':
+        return dataframe.pivot_table(**kwargs)
+    elif method == 'resample_mean_rolling_mean':
+        return dataframe.resample('1S').mean().rolling(window=10).mean()
+    elif method == 'apply_numeric_conversion':
+        return dataframe.apply(pd.to_numeric, errors='coerce')
+    elif method == 'select_dtypes':
+        return dataframe.select_dtypes(include=[kwargs.get('include')]).head()
+    elif method == 'plot_box':
+        return dataframe.plot(kind='box', subplots=True, layout=(3, 3), figsize=(15, 10))
+    elif method == 'corr_with_target_column':
+        return dataframe.corrwith(dataframe[kwargs.get('target_column')])
+    else:
+        print("Invalid method specified.")
+        return None
+
+ 
+# Call the function with the desired method and parameters
+result_head = explore_data(titanic, method='head', n=10)
+print(result_head)
+
+result_shape = explore_data(titanic, method='duplicated_sum')
+print(result_shape)
+
+
+# Data Analysis and Preprocessing
+
+def handle_outliers(df, col):
+    q1 = df[col].quantile(0.25)
+    q3 = df[col].quantile(0.75)
+    iqr = q3 - q1
+
+    return df.loc[~((df[col] < (q1 - 1.5*iqr)) | (df[col] > (q3 + 1.5*iqr)))]
+
+def clean_titanic_data(df):
+    return (
+        df
+        .assign(age=lambda x: x['age'].fillna(x['age'].median()),
+                embarked=lambda x: x['embarked'].fillna(x['embarked'].mode()[0]),
+                fare=lambda x: x['fare'].fillna(x['fare'].mean())
+                )
+        .pipe(handle_outliers, 'fare')
+        .drop(columns=['cabin', 'ticket', 'boat', 'body', 'home.dest'])
+        .dropna()
+    )
+
+df = clean_titanic_data(titanic)
+df.head()
+
+
+### Data Cleaning
+#__Exploratory Data Analysis (EDA)__ is one of the crucial step in data science that allows us to achieve certain insights and statistical measures that are essential for prediction. Since we have so much to discuss, we will keep this section short! but always make it a habit to spend some time analysing and cleaning the dataset before training the data.
+
+sns.histplot(df['age'],kde=True)
+print("Skew: ",df['age'].skew())
+print("Kurtosis: ",df['age'].kurt())
+
+sns.boxplot(df['age'])
+
+
+sns.countplot(df['survived'],hue=df['sex'])
+pd.crosstab(df['sex'],df['survived']).apply(lambda r: round((r/r.sum())*100,1), axis=1)
