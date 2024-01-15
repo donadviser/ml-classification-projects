@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+ 
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
@@ -18,6 +18,45 @@ from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
+
+# Transformers
+from sklearn.preprocessing import (
+    LabelEncoder, 
+    OneHotEncoder,
+    StandardScaler, 
+    MinMaxScaler,
+)
+
+# Modelling Evaluation
+from sklearn.model_selection import (
+    train_test_split,
+    cross_val_score,
+    KFold,
+    GridSearchCV,
+)
+
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report,
+)
+
+
+#Pipelines
+from sklearn.pipeline import (
+    Pipeline,
+    FeatureUnion,
+)
+
+from sklearn.base import (
+    BaseEstimator,
+    TransformerMixin,
+)
+
+
 
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report,precision_score, recall_score, f1_score
 import tensorflow as tf
@@ -336,3 +375,87 @@ def split_data_to_dataframes(data, train_size=0.7, random_seed=None):
     return train_df, test_df
 
 train_data, test_data = split_data_to_dataframes(data)
+
+# Defining variables for the columns in the dataframe to perform a train test split.
+    
+numerical_columns = ['age', 'fare']
+categorical_columns = ["pclass", "sex",
+                       "sibsp", "parch", "embarked"]
+
+
+#Creating ss transformer to scale the continuous numerical data with StandardScaler()
+numeric_transformer = Pipeline(
+    steps=[('imputer', SimpleImputer(strategy='mean')),
+           ('scaler', StandardScaler())])
+ 
+#Creating ohe transformer to encode the categorical data with OneHotEncoder()
+#categorical_transformer = Pipeline(steps=[('ohe', OneHotEncoder(drop='first'))])
+categorical_transformer = Pipeline(
+    steps=[('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+           ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+ 
+#Creating preprocess column transformer to combine the ss and ohe pipelines
+
+
+preprocessor = ColumnTransformer(
+    transformers=[('num', numeric_transformer, numerical_columns),
+                  ('cat', categorical_transformer, categorical_columns)])
+
+# Creating evaluation function to plot a confusion matrix and return the accuracy, precision, recall, and f1 scores
+def evaluation(y, y_hat, title = 'Confusion Matrix'):
+    cm = confusion_matrix(y, y_hat)
+    precision = precision_score(y, y_hat)
+    recall = recall_score(y, y_hat)
+    accuracy = accuracy_score(y,y_hat)
+    f1 = f1_score(y,y_hat)
+    print('Recall: ', recall)
+    print('Accuracy: ', accuracy)
+    print('Precision: ', precision)
+    print('F1: ', f1)
+    sns.heatmap(cm,  cmap= 'PuBu', annot=True, fmt='g', annot_kws=    {'size':20})
+    plt.xlabel('Predicted', fontsize=18)
+    plt.ylabel('Actual', fontsize=18)
+    plt.title(title, fontsize=18)
+    
+    plt.show();
+
+# Performing train_test_split on the data
+y = train["survived"]
+X = train.drop(['survived'], axis=1)
+
+y = LabelEncoder().fit_transform(y)
+X_train, X_test, y_train, y_test = train_test_split(X, y, train_size= .8, random_state=42)
+
+
+"""
+Creating cross_validate function
+Defines the full pipeline with the preprocess and classifier pipelines
+Loop through each fold in the cross validator (default is 5)
+Fit the classifier on the train set, train_ind (prevents data leakage from test set)
+Predict on the training set
+Predict on the validation set
+Print out an evaluation report containing a confusion matrix and the mean accuracy scores for both train and validation sets
+"""
+
+def cross_validate(classifier, cv):
+    pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', classifier)
+    ])
+    train_acc = []
+    test_acc = []
+    for train_ind, val_ind in cv.split(X_train, y_train):
+        X_t, y_t = X_train.iloc[train_ind], y_train[train_ind]
+        pipeline.fit(X_t, y_t)
+        y_hat_t = pipeline.predict(X_t)
+        train_acc.append(accuracy_score(y_t, y_hat_t))
+        X_val, y_val = X_train.iloc[val_ind], y_train[val_ind]
+        y_hat_val = pipeline.predict(X_val)
+        test_acc.append(accuracy_score(y_val, y_hat_val))
+    print(evaluation(y_val, y_hat_val))
+    print('Training Accuracy: {}'.format(np.mean(train_acc)))
+    print('\n')
+    print('Validation Accuracy: {}'.format(np.mean(test_acc)))
+    print('\n')
+
+    cross_validate(RandomForestClassifier(), KFold())
