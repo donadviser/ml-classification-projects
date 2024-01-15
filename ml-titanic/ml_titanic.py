@@ -296,10 +296,43 @@ def explore_data(dataframe, method=None, **kwargs):
 
 #result_shape = explore_data(titanic, method='duplicated_sum')
 #print(result_shape)
+    
+def split_data_to_dataframes(data, train_size=0.7, random_seed=None):
+    """
+    Splits data into train and test DataFrames with random sampling.
 
+    Args:
+        data: An array-like object or a pandas DataFrame containing the data to split.
+        train_size: The proportion of data to be used for training (between 0 and 1).
+        random_seed: An optional integer seed for reproducibility.
 
+    Returns:
+        train_df: A pandas DataFrame containing the training data.
+        test_df: A pandas DataFrame containing the testing data.
+    """
 
+    # Convert data to NumPy array
+    data = np.asarray(data)
 
+    # Set random seed if provided
+    if random_seed is not None:
+        np.random.seed(random_seed)
 
+    # Shuffle data before splitting
+    np.random.shuffle(data)
 
+    # Calculate split indices
+    train_size = int(train_size * len(data))
+    test_size = len(data) - train_size
 
+    # Split data into train and test sets
+    train_data = data[:train_size]
+    test_data = data[train_size:]
+
+    # Split data into train and test sets (as DataFrames)
+    train_df = pd.DataFrame(train_data)
+    test_df = pd.DataFrame(test_data)
+
+    return train_df, test_df
+
+train_data, test_data = split_data_to_dataframes(data)
