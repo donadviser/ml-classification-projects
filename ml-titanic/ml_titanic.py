@@ -1,5 +1,11 @@
 # Titanic - Machine Learning from Disaster
 
+"""
+DevOps 01: dwin - Desktop Windows
+DevOps 02: lwin - Laptop Windows
+DevOps 03: lmac - Laptop MacBook 
+"""
+
 ## Objectives
 # Classify if a person would survive or not.
 
@@ -27,6 +33,12 @@ from sklearn.preprocessing import (
     MinMaxScaler,
 )
 
+from sklearn.impute import (
+    SimpleImputer
+)
+
+from sklearn.compose import ColumnTransformer
+
 # Modelling Evaluation
 from sklearn.model_selection import (
     train_test_split,
@@ -44,7 +56,6 @@ from sklearn.metrics import (
     classification_report,
 )
 
-
 #Pipelines
 from sklearn.pipeline import (
     Pipeline,
@@ -55,8 +66,6 @@ from sklearn.base import (
     BaseEstimator,
     TransformerMixin,
 )
-
-
 
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report,precision_score, recall_score, f1_score
 import tensorflow as tf
@@ -191,6 +200,13 @@ titanic = (titanic_raw
             #.describe()
             #. head(10)
         )
+
+titanic = (titanic_raw
+            # Drop unnecessary columns
+            .drop(['name', 'ticket', 'cabin', 'boat', 'body', 'home.dest'], axis=1)
+)
+
+titanic.head(10)
 
 sns.histplot(titanic['age'],kde=True)
 print("Skew: ",titanic['age'].skew())
@@ -379,13 +395,12 @@ train_data, test_data = split_data_to_dataframes(data)
 # Defining variables for the columns in the dataframe to perform a train test split.
     
 numerical_columns = ['age', 'fare']
-categorical_columns = ["pclass", "sex",
-                       "sibsp", "parch", "embarked"]
+categorical_columns = ["pclass", "sex", "sibsp", "parch", "embarked"]
 
 
 #Creating ss transformer to scale the continuous numerical data with StandardScaler()
 numeric_transformer = Pipeline(
-    steps=[('imputer', SimpleImputer(strategy='mean')),
+    steps=[('imputer', SimpleImputer(strategy='median')),
            ('scaler', StandardScaler())])
  
 #Creating ohe transformer to encode the categorical data with OneHotEncoder()
@@ -420,8 +435,8 @@ def evaluation(y, y_hat, title = 'Confusion Matrix'):
     plt.show();
 
 # Performing train_test_split on the data
-y = train["survived"]
-X = train.drop(['survived'], axis=1)
+y = titanic["survived"]
+X = titanic.drop(['survived'], axis=1)
 
 y = LabelEncoder().fit_transform(y)
 X_train, X_test, y_train, y_test = train_test_split(X, y, train_size= .8, random_state=42)
@@ -444,6 +459,7 @@ def cross_validate(classifier, cv):
     ])
     train_acc = []
     test_acc = []
+    count = 0
     for train_ind, val_ind in cv.split(X_train, y_train):
         X_t, y_t = X_train.iloc[train_ind], y_train[train_ind]
         pipeline.fit(X_t, y_t)
@@ -452,10 +468,15 @@ def cross_validate(classifier, cv):
         X_val, y_val = X_train.iloc[val_ind], y_train[val_ind]
         y_hat_val = pipeline.predict(X_val)
         test_acc.append(accuracy_score(y_val, y_hat_val))
+        count += 1
+        print(f'Number of Iteration: CV= {count}')
     print(evaluation(y_val, y_hat_val))
     print('Training Accuracy: {}'.format(np.mean(train_acc)))
     print('\n')
     print('Validation Accuracy: {}'.format(np.mean(test_acc)))
     print('\n')
+
+
+    print(f'{KFold()= }')
 
     cross_validate(RandomForestClassifier(), KFold())
