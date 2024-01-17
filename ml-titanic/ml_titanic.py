@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
  
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.naive_bayes import GaussianNB
@@ -69,12 +68,26 @@ from sklearn.base import (
 
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report,precision_score, recall_score, f1_score
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
+#from tensorflow.keras.models import Sequential
+#from tensorflow.keras.layers import Dense, Dropout
+
+
+from scikeras.wrappers import KerasClassifier
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+from keras.utils import to_categorical
 
 # file and data management
 import urllib.request
 import zipfile
+
+
+import joblib  # Used for saving and loading models
+
+
+
+
+
 
 
 def extract_zip(src, dst, member_name):
@@ -217,19 +230,34 @@ sns.boxplot(titanic['age'])
 pd.crosstab(titanic['sex'], titanic['target']).apply(lambda r: round((r/r.sum())*100,1), axis=1)
 
 
+# Seaborn's catplot function handles wide-form data:
+sns.catplot(x='target', col='sex', data=titanic, kind='count')
+
+
 class ClassifierTester:
     def __init__(self, data, target, test_size=0.3):
         self.data = data
-        self.target = target
+        self.target = to_categorical(target)
         self.test_size = test_size
-        
-    def test_classifiers(self):
-        # Split the data into training and testing sets
+
+    def create_neural_network(self, input_dim):
+        nn_model = Sequential([
+            Dense(64, activation='relu', input_shape=(self.data.shape[1],)),
+            Dropout(0.2),
+            Dense(32, activation='relu'),
+            Dropout(0.2),
+            Dense(2, activation='softmax')
+            ]
+            )
+        nn_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        return nn_model
+
+    def train_and_save_models(self):
         X_train, X_test, y_train, y_test = train_test_split(self.data, self.target, test_size=self.test_size, random_state=42)
 
         # Define the hyperparameters for each classifier
         rf_params = {'n_estimators': [10, 50, 100], 'max_depth': [None, 5, 10]}
-        lr_params = {'C': [0.1, 1, 10], 'penalty': ['l1', 'l2']}
+        lr_params = {'C': [0.1, 1, 10], 'penalty': [None, 'l2'], 'solver': ['liblinear', 'lbfgs', 'newton-cg']}
         svc_params = {'C': [0.1, 1, 10], 'kernel': ['linear', 'rbf', 'poly'], 'degree': [2, 3, 4]}
         knn_params = {'n_neighbors': [3, 5, 7], 'weights': ['uniform', 'distance'], 'p': [1, 2]}
         nb_params = {}
@@ -237,55 +265,94 @@ class ClassifierTester:
         xgboost_params = {'max_depth': [3, 5, 7], 'learning_rate': [0.01, 0.1, 1.0]}
         nn_params = {'batch_size': [16, 32, 64], 'epochs': [10, 20, 30]}
 
-        # Instantiate the classifiers
-        rf = RandomForestClassifier()
-        lr = LogisticRegression()
-        svc = SVC()
-        knn = KNeighborsClassifier()
-        nb = GaussianNB()
-        dt = DecisionTreeClassifier()
-        xgboost = XGBClassifier()
-        nn = self.create_neural_network()
+        # Create classifiers with GridSearchCV
+        rf_grid = GridSearchCV(RandomForestClassifier(), rf_params, cv=5, n_jobs=-1)
+        lr_grid = GridSearchCV(LogisticRegression(), lr_params, cv=5, n_jobs=-1)
+        svc_grid = GridSearchCV(SVC(), svc_params, cv=5, n_jobs=-1)
+        knn_grid = GridSearchCV(KNeighborsClassifier(), knn_params, cv=5, n_jobs=-1)
+        nb_grid = GridSearchCV(GaussianNB(), nb_params, cv=5, n_jobs=-1)
+        dt_grid = GridSearchCV(DecisionTreeClassifier(), dt_params, cv=5, n_jobs=-1)
+        xgboost_grid = GridSearchCV(XGBClassifier(), xgboost_params, cv=5, n_jobs=-1)
 
-        # Define the grid search for each classifier
-        rf_grid = GridSearchCV(rf, rf_params, cv=5, n_jobs=-1)
-        lr_grid = GridSearchCV(lr, lr_params, cv=5, n_jobs=-1)
-        svc_grid = GridSearchCV(svc, svc_params, cv=5, n_jobs=-1)
-        knn_grid = GridSearchCV(knn, knn_params, cv=5, n_jobs=-1)
-        nb_grid = GridSearchCV(nb, nb_params, cv=5, n_jobs=-1)
-        dt_grid = GridSearchCV(dt, dt_params, cv=5, n_jobs=-1)
-        xgboost_grid = GridSearchCV(xgboost, xgboost_params, cv=5, n_jobs=-1)
-        nn_grid = GridSearchCV(nn, nn_params, cv=5, n_jobs=-1)
+        # Wrap neural network in KerasClassifier
+        nn_clf = KerasClassifier(build_fn=self.create_neural_network, verbose=0)
+        nn_grid = GridSearchCV(nn_clf, nn_params, cv=5, n_jobs=-1, scoring='accuracy')
+        
 
-        # Train and test the classifiers
-        classifiers = {'Random Forest': rf_grid, 'Logistic Regression': lr_grid, 'SVC': svc_grid, 'K-Nearest Neighbors': knn_grid, 'Naive Bayes': nb_grid, 'XGBoost': xgboost_grid}
+        classifiers = {
+            'Random Forest': rf_grid,
+            'Logistic Regression': lr_grid,
+            'SVC': svc_grid,
+            'K-Nearest Neighbors': knn_grid,
+            'Naive Bayes': nb_grid,
+            'Decision Tree': dt_grid,
+            'XGBoost': xgboost_grid,
+            'Neural Network': nn_grid
+        }
+
+        trained_models = {}
+
         for name, clf in classifiers.items():
-                clf.fit(X_train, y_train)
-                y_pred = clf.predict(X_test)
-                accuracy = accuracy_score(y_test, y_pred)
-                precision = precision_score(y_test, y_pred, average='macro')
-                recall = recall_score(y_test, y_pred, average='macro')
-                f1 = f1_score(y_test, y_pred, average='macro')
-                print(f'{name} Classifier Results:')
-                print(f'Accuracy: {accuracy:.4f}')
-                print(f'Precision: {precision:.4f}')
-                print(f'Recall: {recall:.4f}')
-                print(f'F1-Score: {f1:.4f}')
-                print('-'*50)
-                
-    def create_neural_network(self):
-        nn = Sequential([
-            Dense(64, activation='relu', input_shape=(self.data.shape[1],)),
-            Dropout(0.2),
-            Dense(32, activation='relu'),
-            Dropout(0.2),
-            Dense(3, activation='softmax')
-        ])
-        nn.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-        return nn
-    
- 
- 
+            clf.fit(X_train, y_train)
+
+            if name == 'Neural Network':
+                # Save the neural network model with optimal hyperparameters
+                model_filename = f'{name.lower()}_model.joblib'
+                joblib.dump(clf.best_estimator_.model, model_filename)
+                trained_models[name] = model_filename
+            else:
+                # Save other models with optimal hyperparameters
+                model_filename = f'{name.lower()}_model.joblib'
+                joblib.dump(clf.best_estimator_, model_filename)
+                trained_models[name] = model_filename
+
+            # Print evaluation metrics
+            self.print_evaluation_metrics(name, clf, X_test, y_test)
+
+        return trained_models
+
+    def print_evaluation_metrics(self, name, clf, X_test, y_test):
+        if name == 'Neural Network':
+            # Calculate loss and accuracy for neural network
+            loss, accuracy = clf.best_estimator_.model.evaluate(X_test, y_test)
+            print(f'{name} Classifier Results:')
+            print(f'Loss: {loss:.4f}')
+            print(f'Accuracy: {accuracy:.4f}')
+        else:
+            y_pred = clf.predict(X_test)
+            accuracy = accuracy_score(y_test, y_pred)
+            precision = precision_score(y_test, y_pred, average='macro')
+            recall = recall_score(y_test, y_pred, average='macro')
+            f1 = f1_score(y_test, y_pred, average='macro')
+            print(f'{name} Classifier Results:')
+            print(f'Accuracy: {accuracy:.4f}')
+            print(f'Precision: {precision:.4f}')
+
+    def predict_with_saved_model(self, model_filename, X):
+        # Load the saved model
+        model = joblib.load(model_filename)
+
+        # Make predictions
+        predictions = model.predict(X)
+
+        return predictions
+
+
+# Example usage
+# data = pd.read_csv('your_dataset.csv')  # Replace with your dataset
+target = titanic['target']  # Replace 'target_column' with your actual target column
+features = titanic.drop('target', axis=1)  # Assuming 'target_column' is the target variable
+
+classifier_tester = ClassifierTester(features, target)
+trained_models = classifier_tester.train_and_save_models()
+
+# Example: Predict with the saved Random Forest model
+rf_model_filename = trained_models['Random Forest']
+new_data = pd.read_csv('new_data.csv')  # Replace with your new data
+predictions = classifier_tester.predict_with_saved_model(rf_model_filename, new_data)
+print(predictions)
+
+
 
 
 def explore_data(dataframe, method=None, **kwargs):
